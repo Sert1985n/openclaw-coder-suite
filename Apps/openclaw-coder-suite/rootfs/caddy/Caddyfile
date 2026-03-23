@@ -1,0 +1,8 @@
+:80 {
+  reverse_proxy openclaw:18789
+}
+
+:443 {
+  tls internal
+  reverse_proxy openclaw:18789
+}

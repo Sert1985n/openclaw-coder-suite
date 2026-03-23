@@ -1,0 +1,122 @@
+name: openclaw-coder-suite
+
+services:
+  openclaw-init:
+    image: alpine:3.22.1
+    container_name: openclaw-init
+    restart: "no"
+    command: >
+      sh -lc '
+        mkdir -p /data &&
+        cp -rn /seed/. /data/ &&
+        mkdir -p /data/workspace /data/agents /data/skills /data/bootstrap &&
+        chown -R 1000:1000 /data || true
+      '
+    volumes:
+      - openclaw_data:/data
+      - ./rootfs/openclaw:/seed:ro
+    networks:
+      - openclaw_net
+
+  ollama:
+    image: ollama/ollama:0.18.2
+    container_name: openclaw-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 10m
+    expose:
+      - "11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - openclaw_net
+
+  ollama-models:
+    image: ollama/ollama:0.18.2
+    container_name: openclaw-ollama-models
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-lc"]
+    command: >
+      until OLLAMA_HOST=http://ollama:11434 ollama list >/dev/null 2>&1; do sleep 5; done;
+      OLLAMA_HOST=http://ollama:11434 ollama pull qwen2.5-coder:32b;
+      OLLAMA_HOST=http://ollama:11434 ollama pull qwen2.5:32b
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - openclaw_net
+
+  openclaw:
+    image: ghcr.io/openclaw/openclaw:main
+    container_name: openclaw
+    restart: unless-stopped
+    depends_on:
+      openclaw-init:
+        condition: service_completed_successfully
+      ollama:
+        condition: service_started
+    expose:
+      - "18789"
+    environment:
+      TZ: Europe/Berlin
+      OPENCLAW_HOME: /home/node
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      GITHUB_SSH_PRIVATE_KEY: ${GITHUB_SSH_PRIVATE_KEY:-}
+      GITHUB_KNOWN_HOSTS: ${GITHUB_KNOWN_HOSTS:-}
+      GITHUB_SSH_PASSPHRASE: ${GITHUB_SSH_PASSPHRASE:-}
+    volumes:
+      - openclaw_data:/home/node/.openclaw
+      - ./workspace:/workspace
+    networks:
+      - openclaw_net
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    container_name: openclaw-caddy
+    restart: unless-stopped
+    depends_on:
+      openclaw:
+        condition: service_started
+    ports:
+      - "24080:80"
+      - "24443:443"
+    volumes:
+      - ./rootfs/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - openclaw_net
+
+networks:
+  openclaw_net:
+    driver: bridge
+
+volumes:
+  openclaw_data:
+  ollama_data:
+  caddy_data:
+  caddy_config:
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: caddy
+  author: public-pool-btc.ru
+  category: Utilities
+  developer: public-pool-btc.ru
+  icon: https://raw.githubusercontent.com/Sert1985n/openclaw-coder-suite/main/Apps/openclaw-coder-suite/icon.png
+  title:
+    en_US: "OpenClaw Coder Suite"
+  tagline:
+    en_US: "OpenClaw + Ollama + Caddy coding suite"
+  description:
+    en_US: "HTTPS AI coding workspace for CasaOS with Russian agent profiles, Ollama coding models, GitHub SSH env placeholders and web-search env placeholders."
+  tips:
+    before_install:
+      en_US: "First start is long: Ollama downloads qwen2.5-coder:32b and qwen2.5:32b. After install, open App settings and paste BRAVE_API_KEY and GitHub SSH env values if you need web search or git push over SSH."
+  port_map: "24443"
