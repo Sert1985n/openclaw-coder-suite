@@ -85,7 +85,7 @@ services:
       - "24080:80"
       - "24443:443"
     volumes:
-      - ./rootfs/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./rootfs/caddy:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
